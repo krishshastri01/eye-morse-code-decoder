@@ -1,24 +1,3 @@
-"""
-Eye-Blink Morse Code Communicator
-===================================
-Uses OpenCV + MediaPipe Face Mesh to translate eye blinks into Morse code.
-
-EAR (Eye Aspect Ratio) formula:
-    EAR = (||p2-p6|| + ||p3-p5||) / (2 * ||p1-p4||)
-
-Blink durations:
-    DOT  : 200ms – 500ms
-    DASH : 600ms – 1200ms
-    CHAR BREAK: eyes open for > 1500ms triggers character decode
-    WORD BREAK: eyes open for > 3000ms inserts a space
-
-Dependencies:
-    pip install opencv-python mediapipe numpy scipy
-
-Run:
-    python eye_morse.py
-"""
-
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -26,9 +5,6 @@ import time
 import collections
 from scipy.spatial import distance as dist
 
-# ──────────────────────────────────────────────
-# MORSE CODE DICTIONARY
-# ──────────────────────────────────────────────
 MORSE_TO_CHAR = {
     ".-":    "A", "-...":  "B", "-.-.":  "C", "-..":   "D",
     ".":     "E", "..-.":  "F", "--.":   "G", "....":  "H",
@@ -49,27 +25,18 @@ MORSE_TO_CHAR = {
     "...-..-":"$", ".--.-.": "@", "...---...": "SOS",
 }
 
-# ──────────────────────────────────────────────
-# MEDIAPIPE LANDMARK INDICES FOR EYES
-# Left eye: outer=33, inner=133, top-pts=160,158, bot-pts=144,153
-# Right eye: outer=362,inner=263, top-pts=387,385, bot-pts=373,380
-# ──────────────────────────────────────────────
 LEFT_EYE  = [33, 160, 158, 133, 153, 144]
 RIGHT_EYE = [362, 387, 385, 263, 380, 373]
 
-# ──────────────────────────────────────────────
-# TUNING PARAMETERS
-# ──────────────────────────────────────────────
-EAR_THRESHOLD     = 0.21   # Below this → eye is "closed"
-DEBOUNCE_FRAMES   = 2      # Consecutive frames needed to confirm state change
-EAR_SMOOTH_N      = 5      # Rolling average window for EAR
-
+EAR_THRESHOLD     = 0.21   
+DEBOUNCE_FRAMES   = 2      
+EAR_SMOOTH_N      = 5      
 DOT_MIN_MS        = 80
 DOT_MAX_MS        = 500
 DASH_MIN_MS       = 600
 DASH_MAX_MS       = 1500
-CHAR_BREAK_MS     = 1600   # Open-eyes silence → decode current morse token
-WORD_BREAK_MS     = 3200   # Longer silence → insert space
+CHAR_BREAK_MS     = 1600   
+WORD_BREAK_MS     = 3200   
 
 
 def ear(landmarks, indices, w, h):
@@ -85,9 +52,7 @@ def decode_morse(token):
     return MORSE_TO_CHAR.get(token, f"[{token}]")
 
 
-# ──────────────────────────────────────────────
-# MAIN APP
-# ──────────────────────────────────────────────
+
 def main():
     mp_face_mesh = mp.solutions.face_mesh
     face_mesh = mp_face_mesh.FaceMesh(
@@ -101,23 +66,23 @@ def main():
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
-    # State
+   
     ear_history = collections.deque(maxlen=EAR_SMOOTH_N)
-    blink_start      = None     # When eyes closed
-    open_start       = None     # When eyes opened (after a blink)
-    last_state       = "OPEN"   # "OPEN" | "CLOSED"
+    blink_start      = None    
+    open_start       = None     
+    last_state       = "OPEN"   
     confirm_closed   = 0
     confirm_open     = 0
 
-    current_morse    = ""       # Building: e.g. ".-."
-    decoded_text     = ""       # Full decoded sentence
-    last_signal_ms   = None     # Timestamp of last dot/dash added
+    current_morse    = ""       
+    decoded_text     = ""       
+    last_signal_ms   = None    
 
-    # EAR graph buffer
+    
     EAR_HISTORY_LEN  = 120
     ear_graph         = collections.deque([0.21] * EAR_HISTORY_LEN, maxlen=EAR_HISTORY_LEN)
 
-    # ── Fonts & Colors ───────────────────────
+   
     FONT       = cv2.FONT_HERSHEY_SIMPLEX
     COLOR_DOT  = (100, 220, 255)
     COLOR_DASH = (100, 100, 255)
@@ -150,7 +115,7 @@ def main():
 
         now = ms()
 
-        # ── Compute EAR ──────────────────────
+       
         avg_ear = 0.21
         if results.multi_face_landmarks:
             lm = results.multi_face_landmarks[0].landmark
@@ -164,7 +129,7 @@ def main():
 
         eye_closed = smooth_ear < EAR_THRESHOLD
 
-        # ── State Machine with debounce ───────
+        
         if eye_closed:
             confirm_closed += 1
             confirm_open    = 0
@@ -172,11 +137,11 @@ def main():
             confirm_open   += 1
             confirm_closed  = 0
 
-        # Transition: OPEN → CLOSED
+        
         if last_state == "OPEN" and confirm_closed >= DEBOUNCE_FRAMES:
             last_state   = "CLOSED"
             blink_start  = now
-            # Check word break (long open silence before this blink)
+           
             if open_start and (now - open_start) >= WORD_BREAK_MS and current_morse:
                 ch = decode_morse(current_morse)
                 decoded_text += ch
@@ -193,7 +158,7 @@ def main():
                 status_msg   = f"CHAR → {ch}"
                 status_color = COLOR_ACC
 
-        # Transition: CLOSED → OPEN
+        
         if last_state == "CLOSED" and confirm_open >= DEBOUNCE_FRAMES:
             last_state = "OPEN"
             open_start = now
@@ -214,7 +179,7 @@ def main():
                     status_color = COLOR_WARN
                 blink_start = None
 
-        # Auto char-break when no new signal for CHAR_BREAK_MS
+       
         if (last_state == "OPEN" and last_signal_ms and current_morse and
                 (now - last_signal_ms) >= CHAR_BREAK_MS):
             ch = decode_morse(current_morse)
@@ -225,12 +190,12 @@ def main():
             status_msg    = f"AUTO-DECODE → {ch}"
             status_color  = COLOR_ACC
 
-        # ── Draw frame overlay ─────────────────
+      
 
-        # Semi-transparent side panel (left strip)
+       
         draw_panel(frame, 0, 0, 420, h)
 
-        # EAR Graph
+       
         graph_x, graph_y = 20, 20
         graph_w, graph_h = 380, 90
         cv2.rectangle(frame, (graph_x, graph_y), (graph_x+graph_w, graph_y+graph_h),
@@ -238,7 +203,7 @@ def main():
         cv2.rectangle(frame, (graph_x, graph_y), (graph_x+graph_w, graph_y+graph_h),
                       (80, 88, 100), 1)
 
-        # Threshold line
+        
         thresh_y = graph_y + graph_h - int((EAR_THRESHOLD / 0.5) * graph_h)
         cv2.line(frame, (graph_x, thresh_y), (graph_x+graph_w, thresh_y),
                  (80, 80, 200), 1, cv2.LINE_AA)
@@ -257,7 +222,7 @@ def main():
         cv2.putText(frame, f"EAR: {smooth_ear:.3f}", (graph_x+4, graph_y+graph_h+18),
                     FONT, 0.55, COLOR_TEXT, 1)
 
-        # Eye state pill
+        
         state_lbl  = "CLOSED" if eye_closed else "OPEN"
         state_col  = (60, 80, 220) if eye_closed else (60, 200, 120)
         cv2.rectangle(frame, (graph_x+230, graph_y+graph_h+4),
@@ -265,34 +230,34 @@ def main():
         cv2.putText(frame, f"EYE: {state_lbl}", (graph_x+240, graph_y+graph_h+20),
                     FONT, 0.55, (255,255,255), 1)
 
-        # Current Morse
+        
         cv2.putText(frame, "CURRENT MORSE", (20, 155), FONT, 0.45, (140,140,160), 1)
         morse_display = current_morse if current_morse else "_ _ _"
         cv2.putText(frame, morse_display, (20, 195), FONT, 1.1,
                     COLOR_DOT if "." in morse_display else COLOR_DASH, 2, cv2.LINE_AA)
 
-        # Last decoded char (big)
+       
         cv2.putText(frame, "LAST CHAR", (20, 250), FONT, 0.45, (140,140,160), 1)
         cv2.putText(frame, last_char if last_char else "–", (20, 310),
                     cv2.FONT_HERSHEY_DUPLEX, 2.8, COLOR_ACC, 3, cv2.LINE_AA)
 
-        # Status message
+       
         cv2.putText(frame, status_msg, (20, 360), FONT, 0.5, status_color, 1)
 
-        # Decoded text box
+        
         cv2.putText(frame, "DECODED TEXT", (20, 400), FONT, 0.45, (140,140,160), 1)
-        # Word-wrap at ~28 chars
+      
         words = decoded_text[-56:]
         line1 = words[:28]
         line2 = words[28:]
         cv2.putText(frame, line1, (20, 430), FONT, 0.75, COLOR_TEXT, 1, cv2.LINE_AA)
         cv2.putText(frame, line2, (20, 460), FONT, 0.75, COLOR_TEXT, 1, cv2.LINE_AA)
 
-        # Hotkeys hint
+        
         cv2.putText(frame, "[C] Clear  [Q] Quit", (20, h-14),
                     FONT, 0.42, (100, 100, 120), 1)
 
-        # Blink-in-progress ring on camera feed
+        
         if eye_closed and blink_start:
             elapsed = now - blink_start
             ratio   = min(elapsed / DASH_MAX_MS, 1.0)
